@@ -1,0 +1,104 @@
+cmake_minimum_required(VERSION 3.0)
+
+project(openssl VERSION 1.1.1 LANGUAGES C)
+
+include(CheckSymbolExists) 
+check_symbol_exists(_X86_ "Windows.h" _X86_)
+check_symbol_exists(_AMD64_ "Windows.h" _AMD64_)
+check_symbol_exists(_ARM_ "Windows.h" _ARM_)
+check_symbol_exists(_ARM64_ "Windows.h" _ARM64_)
+
+if(_X86_)
+	message(STATUS "Win32")
+	set(OPENSSL_PLATFORM VC-WIN32)
+elseif(_AMD64_)
+	message(STATUS "x64")
+	set(OPENSSL_PLATFORM VC-WIN64A)
+elseif(_ARM_)
+	message(STATUS "arm")
+	set(OPENSSL_PLATFORM VC-WIN32-ARM)
+elseif(_ARM64_)
+	message(STATUS "arm64")
+	set(OPENSSL_PLATFORM VC-WIN64-ARM)
+else()
+	message(FATAL_ERROR "Unsupported target architecture")
+endif()
+
+if (WINDOWS_STORE)
+	set(OPENSSL_PLATFORM "${OPENSSL_PLATFORM}-UWP")
+endif()
+
+message(STATUS "perl Configure ${OPENSSL_PLATFORM} disable-capieng enable-static-engine no-asm no-dso no-shared no-tests no-ui-console --prefix=${CMAKE_INSTALL_PREFIX}")
+execute_process(COMMAND perl Configure ${OPENSSL_PLATFORM} disable-capieng enable-static-engine no-asm no-dso no-shared no-tests no-ui-console --prefix=${CMAKE_INSTALL_PREFIX} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_custom_target(openssl ALL COMMAND nmake build_generated libcrypto.lib libssl.lib WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
+add_library(crypto INTERFACE)
+target_link_libraries(crypto
+	INTERFACE
+	libcrypto.lib
+)
+
+target_link_directories(crypto
+	INTERFACE
+	$<INSTALL_INTERFACE:lib>
+)
+
+add_library(ssl INTERFACE)
+target_link_libraries(ssl
+	INTERFACE
+	libssl.lib
+)
+
+target_link_directories(ssl
+	INTERFACE
+	$<INSTALL_INTERFACE:lib>
+)
+
+install(DIRECTORY include/openssl DESTINATION include/ FILES_MATCHING PATTERN "*.h")
+install(FILES libcrypto.lib libssl.lib ossl_static.pdb DESTINATION lib/)
+
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config-version.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
+
+install(TARGETS crypto EXPORT crypto 
+  RUNTIME DESTINATION bin
+  ARCHIVE DESTINATION lib
+	LIBRARY DESTINATION lib
+	INCLUDES DESTINATION include)
+
+install(TARGETS ssl EXPORT ssl 
+  RUNTIME DESTINATION bin
+  ARCHIVE DESTINATION lib
+	LIBRARY DESTINATION lib
+	INCLUDES DESTINATION include)
+
+install(EXPORT crypto
+  FILE
+    crypto.cmake
+  NAMESPACE
+    openssl::
+  DESTINATION
+    lib/cmake/openssl
+)
+
+install(EXPORT ssl
+  FILE
+    ssl.cmake
+  NAMESPACE
+    openssl::
+  DESTINATION
+    lib/cmake/openssl
+)
+
+install(
+  FILES
+    cmake/openssl-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/openssl-config-version.cmake
+  DESTINATION
+    lib/cmake/openssl
+)
